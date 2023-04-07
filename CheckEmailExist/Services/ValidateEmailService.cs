@@ -1,4 +1,1 @@
-﻿namespace CheckEmailExist.Services
-{
-
-}
+﻿namespace CheckEmailExist.Services;

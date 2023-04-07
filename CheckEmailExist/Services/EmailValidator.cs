@@ -3,30 +3,26 @@ using System.Net.Sockets;
 using System.Text;
 using DnsClient;
 using DnsClient.Protocol;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 
 namespace CheckEmailExist.Services;
 
 public class EmailValidator
 {
     private const string EmailFrom = "longnt2204@gmail.com";
-    private int DefaultTcpPort = 25;
-    private static LookupClient _lookupClient =
-        new(new LookupClientOptions(
-            NameServer.GooglePublicDns2, 
-            NameServer.GooglePublicDns,
-            NameServer.Cloudflare2, 
+
+    private static readonly LookupClient _lookupClient = new(
+        new LookupClientOptions(NameServer.GooglePublicDns2, NameServer.GooglePublicDns, NameServer.Cloudflare2,
             NameServer.Cloudflare)
         {
             UseCache = true,
             UseRandomNameServer = false,
-            Retries = 3,
+            Retries = 3
         });
 
-    public  bool Validate(string input)
-    {
+    private readonly int DefaultTcpPort = 25;
 
+    public bool Validate(string input)
+    {
         if (!MailAddress.TryCreate(input, out var email))
         {
             return false;
@@ -49,21 +45,20 @@ public class EmailValidator
         {
             try
             {
-                if (CheckEmailExist(email,mxRecord))
+                if (CheckEmailExist(email, mxRecord))
                 {
                     return true;
                 }
             }
             catch (Exception e)
             {
-
             }
-
         }
+
         return false;
     }
 
-    private  bool CheckEmailExist(MailAddress email, MxRecord mxRecord)
+    private bool CheckEmailExist(MailAddress email, MxRecord mxRecord)
     {
         using (var tcpClient = new TcpClient(mxRecord.Exchange, DefaultTcpPort))
         {
@@ -72,39 +67,37 @@ public class EmailValidator
             {
                 var startResponse = AcceptResponse(streamReader, SmtpStatusCode.ServiceReady);
 
-
                 var response1 = SendCommand(networkStream, streamReader, "HELO " + email.Host, SmtpStatusCode.Ok);
-                var response2 = SendCommand(networkStream, streamReader, "MAIL FROM:<" + EmailFrom + ">", SmtpStatusCode.Ok);
-                var response3 =  SendCommand(networkStream, streamReader, "RCPT TO:<" + email.Address + ">");
-                var response4 =  SendCommand(networkStream, streamReader, "RSET", SmtpStatusCode.Ok);
+                var response2 = SendCommand(networkStream, streamReader, "MAIL FROM:<" + EmailFrom + ">",
+                    SmtpStatusCode.Ok);
+                var response3 = SendCommand(networkStream, streamReader, "RCPT TO:<" + email.Address + ">");
+                var response4 = SendCommand(networkStream, streamReader, "RSET", SmtpStatusCode.Ok);
 
-                return response2.Code == SmtpStatusCode.Ok && response3.Code == SmtpStatusCode.Ok;
+                return response3.Code != SmtpStatusCode.MailboxUnavailable &&
+                       response3.Code != SmtpStatusCode.MailboxNameNotAllowed;
             }
         }
     }
-    private struct SmtpResponse
-    {
-        public string Raw { get; set; }
-        public SmtpStatusCode Code { get; set; }
-    }
-    private SmtpResponse SendCommand(NetworkStream networkStream, StreamReader streamReader, string command, params SmtpStatusCode[] goodReplys)
+
+    private SmtpResponse SendCommand(NetworkStream networkStream, StreamReader streamReader, string command,
+        params SmtpStatusCode[] goodReplys)
     {
         var dataBuffer = Encoding.ASCII.GetBytes(command + "\r\n");
         networkStream.Write(dataBuffer, 0, dataBuffer.Length);
 
-        return this.AcceptResponse(streamReader, goodReplys);
+        return AcceptResponse(streamReader, goodReplys);
     }
 
-    private  SmtpResponse AcceptResponse(StreamReader streamReader, params SmtpStatusCode[] goodReplys)
+    private SmtpResponse AcceptResponse(StreamReader streamReader, params SmtpStatusCode[] goodReplys)
     {
-        string response = streamReader.ReadLine();
+        var response = streamReader.ReadLine();
 
         if (string.IsNullOrEmpty(response) || response.Length < 3)
         {
             throw new Exception("Invalid response");
         }
 
-        SmtpStatusCode smtpStatusCode = this.GetResponseCode(response);
+        var smtpStatusCode = GetResponseCode(response);
 
         if (goodReplys.Length > 0 && !goodReplys.Contains(smtpStatusCode))
         {
@@ -121,5 +114,11 @@ public class EmailValidator
     private SmtpStatusCode GetResponseCode(string response)
     {
         return (SmtpStatusCode)Enum.Parse(typeof(SmtpStatusCode), response.Substring(0, 3));
+    }
+
+    private struct SmtpResponse
+    {
+        public string Raw { get; set; }
+        public SmtpStatusCode Code { get; set; }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Net.Mail;
 using System.Net.Sockets;
 using System.Text;
+using CheckEmailExist.Helpers;
 using DnsClient;
 using DnsClient.Protocol;
 
@@ -33,8 +34,8 @@ public class EmailValidator
             return false;
         }
 
-        var mxRecords = _lookupClient.QueryAsync(email.Host, QueryType.MX).GetAwaiter().GetResult().Answers.MxRecords()
-            ?.ToList();
+        var mxRecords = AsyncHelpers.RunSync(() => _lookupClient.QueryAsync(email.Host, QueryType.MX)).Answers
+            .MxRecords()?.ToList();
 
         if (mxRecords == null || mxRecords.Count == 0)
         {
